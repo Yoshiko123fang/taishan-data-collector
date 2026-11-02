@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>数据回收 · 采集端</title>
+<style>
+  :root{ --teal:#028090; --sea:#00A896; --mint:#02C39A; --ink:#16323A; --mute:#5E7177; --bg:#F4F8F7; --warn:#E0563B; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:"Microsoft YaHei","PingFang SC",sans-serif; background:var(--bg); color:var(--ink); }
+  .wrap{ max-width:820px; margin:0 auto; padding:24px 18px 70px; }
+  header{ background:linear-gradient(120deg,var(--teal),var(--sea)); color:#fff; padding:26px 22px; border-radius:16px; }
+  header h1{ margin:0 0 6px; font-size:23px; }
+  header p{ margin:0; opacity:.92; font-size:14px; line-height:1.6; }
+  .card{ background:#fff; border:1px solid #E2ECEA; border-radius:14px; padding:20px; margin-top:18px; }
+  .card > h2{ margin:0 0 14px; font-size:18px; color:var(--teal); display:flex; align-items:center; gap:8px; }
+  .card > h2::before{ content:""; width:8px; height:18px; background:var(--mint); border-radius:4px; display:inline-block; }
+  label{ display:block; font-size:14px; margin:12px 0 5px; font-weight:600; }
+  label .req{ color:var(--warn); margin-left:3px; }
+  input,select,textarea{ width:100%; padding:10px 12px; border:1px solid #CBD8D6; border-radius:9px; font-size:14px; font-family:inherit; }
+  input:focus,select:focus,textarea:focus{ outline:none; border-color:var(--sea); box-shadow:0 0 0 3px rgba(0,168,150,.15); }
+  .filebox{ border:2px dashed #B9D4D0; border-radius:10px; padding:16px; text-align:center; color:var(--mute); font-size:13px; }
+  .q{ margin:16px 0; }
+  .q .qt{ font-weight:600; font-size:14px; margin-bottom:8px; line-height:1.5; }
+  .opt{ display:block; margin:6px 0; font-weight:400; font-size:14px; }
+  .opt input{ width:auto; margin-right:8px; }
+  button{ background:var(--teal); color:#fff; border:none; border-radius:10px; padding:13px 22px; font-size:15px; font-weight:700; cursor:pointer; width:100%; margin-top:18px; }
+  button:hover{ background:var(--sea); }
+  .msg{ margin-top:16px; padding:12px 14px; border-radius:10px; font-size:14px; display:none; }
+  .ok{ background:#E3F5EF; color:#02735E; }
+  .err{ background:#FCE9E4; color:#B23A1E; }
+  .hint{ font-size:12px; color:var(--mute); margin-top:6px; }
+  .sec-title{ font-weight:700; color:var(--teal); margin:20px 0 8px; font-size:15px; border-left:4px solid var(--mint); padding-left:10px; }
+  .task-card{ background:#FBFEFD; border:1px solid #D8ECE8; border-radius:12px; padding:16px; margin-top:14px; }
+  .task-card h3{ margin:0 0 8px; font-size:16px; color:var(--teal); }
+  .intro{ font-size:14px; color:#2C4A52; line-height:1.7; margin:6px 0; }
+  .steps{ margin:10px 0 4px; padding-left:22px; }
+  .steps li{ font-size:13.5px; line-height:1.7; margin:4px 0; color:#33474D; }
+  .gallery{ display:flex; flex-wrap:wrap; gap:10px; margin:10px 0; }
+  .gallery figure{ margin:0; max-width:230px; border:1px solid #E2ECEA; border-radius:10px; overflow:hidden; background:#fff; }
+  .gallery img{ width:100%; display:block; cursor:zoom-in; }
+  .gallery figcaption{ font-size:11.5px; color:var(--mute); padding:5px 8px; }
+  .res{ background:#EAF4F2; border-radius:9px; padding:10px 12px; margin:10px 0; }
+  .res-title{ font-weight:700; font-size:13px; color:var(--teal); margin-bottom:6px; }
+  .res-item{ font-size:13px; margin:4px 0; }
+  .res-item a{ color:var(--sea); text-decoration:none; font-weight:600; }
+  .res-desc{ font-size:12px; color:var(--mute); margin-top:2px; line-height:1.5; }
+  .feedback{ margin-top:12px; padding:12px; background:#FFF7F3; border:1px dashed #F0C9B8; border-radius:10px; }
+  .fb-q{ font-weight:700; font-size:14px; color:#A8431F; margin-bottom:8px; }
+  .fb-reason{ margin-top:8px; }
+  .pending{ background:#F1F5F4; border:1px dashed #C9D8D4; border-radius:12px; padding:14px 16px; margin-top:14px; color:var(--mute); }
+  .pending b{ color:var(--teal); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>数据回收 · 采集端</h1>
+    <p>请完成以下三部分：① 基本资料　② 实操任务（图文 + 每环节反馈）　③ 调查问卷。<br>带 <span style="color:#FFD9CC">*</span> 为必填；每个实操环节末尾请选择“能否完成”，未完成的请填写原因。</p>
+  </header>
+
+  <div class="card">
+    <h2>一、基本资料</h2>
+    <div id="basicInfo"></div>
+  </div>
+
+  <div class="card">
+    <h2>二、实操任务（任务单）</h2>
+    <div id="tasks"></div>
+    <div class="filebox" style="margin-top:14px">
+      <div style="font-weight:700;color:var(--teal);margin-bottom:6px">提交您的实操成果文档</div>
+      <input type="file" id="files" multiple />
+      <div class="hint" id="fileHint"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>三、调查问卷</h2>
+    <div id="questionnaire"></div>
+  </div>
+
+  <button id="submitBtn">提交</button>
+  <div class="msg" id="msg"></div>
+</div>
+
+<script src="app-config.js"></script>
+<script>
+const SB = SUPABASE_URL, ANON = SUPABASE_ANON;
+const CFG = { basicInfoFields, tasks, questionnaire, taskDoc };
+let submitted = false;
+
+function el(tag, attrs={}, html){ const e=document.createElement(tag); for(const k in attrs) e[k]=attrs[k]; if(html!=null) e.innerHTML=html; return e; }
+function safeName(n){ return (n||'file').replace(/[^\w.\-]/g,'_').slice(0,120); }
+function randHex(){ const a=new Uint8Array(3); crypto.getRandomValues(a); return [...a].map(x=>x.toString(16).padStart(2,'0')).join(''); }
+function sbHeaders(extra){ return Object.assign({'apikey':ANON,'Authorization':'Bearer '+ANON}, extra||{}); }
+
+function renderBasic(){
+  const bi = document.getElementById('basicInfo');
+  CFG.basicInfoFields.forEach(f=>{
+    let input;
+    if(f.type==='select'){
+      input = el('select',{id:'bi_'+f.key});
+      input.appendChild(el('option',{value:''},'— 请选择 —'));
+      f.options.forEach(o=>input.appendChild(el('option',{value:o},o)));
+    } else {
+      input = el('input',{id:'bi_'+f.key, type:f.type||'text'});
+    }
+    bi.appendChild(el('label',{}, f.label + (f.required?' <span class="req">*</span>':'')));
+    bi.appendChild(input);
+  });
+}
+function renderTasks(){
+  const box = document.getElementById('tasks');
+  CFG.tasks.forEach(t=>{
+    if(t.pending){
+      const p = el('div',{className:'pending'});
+      p.innerHTML = `<b>${t.title}</b>　${t.note||'敬请期待（后续补充）'}`;
+      box.appendChild(p); return;
+    }
+    const card = el('div',{className:'task-card'});
+    card.appendChild(el('h3',{}, t.title));
+    if(t.intro) card.appendChild(el('p',{className:'intro'}, t.intro));
+    if(t.steps && t.steps.length){
+      const ol = el('ol',{className:'steps'}); t.steps.forEach(s=>ol.appendChild(el('li',{}, s))); card.appendChild(ol);
+    }
+    if(t.images && t.images.length){
+      const gal = el('div',{className:'gallery'});
+      t.images.forEach(im=>{
+        const fig = el('figure',{});
+        const a = el('a',{href:im.src, target:'_blank', rel:'noopener'});
+        a.appendChild(el('img',{src:im.src, alt:im.caption||'', loading:'lazy'}));
+        fig.appendChild(a);
+        if(im.caption) fig.appendChild(el('figcaption',{}, im.caption));
+        gal.appendChild(fig);
+      });
+      card.appendChild(gal);
+    }
+    if(t.resources && t.resources.length){
+      const rl = el('div',{className:'res'});
+      rl.appendChild(el('div',{className:'res-title'},'📎 参考资源'));
+      t.resources.forEach(r=>{
+        const d = el('div',{className:'res-item'});
+        if(r.url) d.appendChild(el('a',{href:r.url, target:'_blank', rel:'noopener'}, r.title));
+        else d.appendChild(el('span',{}, r.title));
+        if(r.desc) d.appendChild(el('div',{className:'res-desc'}, r.desc));
+        rl.appendChild(d);
+      });
+      card.appendChild(rl);
+    }
+    const fb = el('div',{className:'feedback'});
+    fb.appendChild(el('div',{className:'fb-q'}, t.feedbackQuestion));
+    const iy = el('input',{type:'radio', name:'fb_'+t.id, value:'yes', id:'fb_'+t.id+'_yes'});
+    const ly = el('label',{className:'opt'}); ly.appendChild(iy); ly.appendChild(document.createTextNode(' 能完成'));
+    const ino = el('input',{type:'radio', name:'fb_'+t.id, value:'no', id:'fb_'+t.id+'_no'});
+    const ln = el('label',{className:'opt'}); ln.appendChild(ino); ln.appendChild(document.createTextNode(' 未能完成'));
+    const ta = el('textarea',{id:'fb_'+t.id+'_reason', rows:2, placeholder:'请填写未能完成的原因'}); ta.className='fb-reason'; ta.style.display='none';
+    const upd = ()=>{ const no = document.getElementById('fb_'+t.id+'_no').checked; ta.style.display = no?'block':'none'; if(!no) ta.value=''; };
+    iy.addEventListener('change', upd); ino.addEventListener('change', upd);
+    fb.appendChild(ly); fb.appendChild(ln); fb.appendChild(ta);
+    card.appendChild(fb);
+    box.appendChild(card);
+  });
+}
+function renderQuestionnaire(){
+  const box = document.getElementById('questionnaire');
+  let curSec = null;
+  CFG.questionnaire.forEach(q=>{
+    if(q.section && q.section!==curSec){ curSec=q.section; box.appendChild(el('div',{className:'sec-title'}, curSec)); }
+    const bq = el('div',{className:'q'});
+    bq.appendChild(el('div',{className:'qt'}, q.question));
+    if(q.type==='text'){
+      bq.appendChild(el('textarea',{id:'q_'+q.id, rows:3}));
+    } else {
+      q.options.forEach(o=>{
+        const lab = el('label',{className:'opt'});
+        const inp = el('input',{type: q.type==='multi'?'checkbox':'radio', name:'q_'+q.id, value:o});
+        inp.id='q_'+q.id+'_'+o;
+        if(q.max) inp.addEventListener('change', ()=>{
+          if(q.type==='multi' && q.max){
+            const checked = document.querySelectorAll(`input[name="q_${q.id}"]:checked`);
+            if(checked.length > q.max){ inp.checked=false; alert(`本题最多选 ${q.max} 项`); }
+          }
+        });
+        lab.appendChild(inp); lab.appendChild(document.createTextNode(' '+o));
+        bq.appendChild(lab);
+      });
+    }
+    box.appendChild(bq);
+  });
+}
+function collect(){
+  const basic_info={}; const missing=[];
+  CFG.basicInfoFields.forEach(f=>{ const v=document.getElementById('bi_'+f.key).value.trim(); if(f.required && !v) missing.push(f.label); basic_info[f.key]=v; });
+  const tasks={};
+  CFG.tasks.forEach(t=>{
+    if(t.pending) return;
+    const yes=document.getElementById('fb_'+t.id+'_yes').checked, no=document.getElementById('fb_'+t.id+'_no').checked;
+    tasks[t.id]={ achieved: yes?'yes':(no?'no':''), reason: document.getElementById('fb_'+t.id+'_reason').value.trim() };
+  });
+  const questionnaire={};
+  CFG.questionnaire.forEach(q=>{
+    if(q.type==='text'){ questionnaire[q.id]=document.getElementById('q_'+q.id).value.trim(); }
+    else { const sel=[]; document.querySelectorAll(`input[name="q_${q.id}"]:checked`).forEach(i=>sel.push(i.value)); questionnaire[q.id]= q.type==='multi'? sel : (sel[0]||''); }
+  });
+  return { basic_info, tasks, questionnaire, missing };
+}
+function showMsg(text, ok){ const m=document.getElementById('msg'); m.textContent=text; m.className='msg '+(ok?'ok':'err'); m.style.display='block'; m.scrollIntoView({behavior:'smooth',block:'center'}); }
+
+document.getElementById('files').accept = CFG.taskDoc.accept;
+document.getElementById('fileHint').textContent = `支持 ${CFG.taskDoc.accept} ，最多 ${CFG.taskDoc.maxFiles} 个，单个 ${CFG.taskDoc.maxSizeMB}MB`;
+renderBasic(); renderTasks(); renderQuestionnaire();
+
+document.getElementById('submitBtn').addEventListener('click', async ()=>{
+  if(submitted) return;
+  const { basic_info, tasks, questionnaire, missing } = collect();
+  if(missing.length){ showMsg('请完整填写必填项：'+missing.join('、'), false); return; }
+  for(const t of CFG.tasks){
+    if(t.pending) continue;
+    const fb = tasks[t.id];
+    if(!fb.achieved){ showMsg('请完成反馈：'+t.title, false); return; }
+    if(fb.achieved==='no' && !fb.reason){ showMsg('请填写未能完成的原因：'+t.title, false); return; }
+  }
+  const id = crypto.randomUUID();
+  const files=[]; const fileList = document.getElementById('files').files;
+  for(const f of fileList){
+    const path = `${id}__${randHex()}__${safeName(f.name)}`;
+    try{
+      const r = await fetch(`${SB}/storage/v1/object/uploads/${path}`, {
+        method:'POST',
+        headers: sbHeaders({'Content-Type':'application/octet-stream','x-upsert':'true'}),
+        body: f
+      });
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      files.push({ name: f.name, stored: path });
+    }catch(e){ showMsg('文件“'+f.name+'”上传失败：'+e.message, false); return; }
+  }
+  try{
+    const r = await fetch(`${SB}/rest/v1/submissions`, {
+      method:'POST',
+      headers: sbHeaders({'Content-Type':'application/json','Prefer':'return=minimal'}),
+      body: JSON.stringify({ id, basic_info, tasks, questionnaire, files })
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    submitted = true;
+    document.getElementById('submitBtn').disabled = true;
+    showMsg('提交成功，感谢您的参与！', true);
+  }catch(e){ showMsg('提交失败：'+e.message, false); }
+});
+</script>
+</body>
+</html>
