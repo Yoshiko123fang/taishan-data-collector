@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>数据回收 · 汇总端</title>
+<style>
+  :root{ --teal:#028090; --sea:#00A896; --mint:#02C39A; --ink:#16323A; --mute:#5E7177; --bg:#F4F8F7; --warn:#E0563B; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:"Microsoft YaHei","PingFang SC",sans-serif; background:var(--bg); color:var(--ink); }
+  .wrap{ max-width:1180px; margin:0 auto; padding:24px 18px 60px; }
+  header{ background:linear-gradient(120deg,var(--teal),var(--sea)); color:#fff; padding:22px; border-radius:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+  header h1{ margin:0; font-size:22px; }
+  .btn{ background:#fff; color:var(--teal); border:none; border-radius:9px; padding:10px 14px; font-weight:700; cursor:pointer; font-size:13px; margin-left:8px; }
+  .btn.primary{ background:var(--ink); color:#fff; }
+  .btn.danger{ background:#fff; color:var(--warn); border:1px solid var(--warn); }
+  .card{ background:#fff; border:1px solid #E2ECEA; border-radius:14px; padding:18px; margin-top:18px; overflow:auto; }
+  .login{ max-width:380px; margin:80px auto; background:#fff; padding:28px; border-radius:14px; box-shadow:0 6px 30px rgba(0,0,0,.08); }
+  .login input{ width:100%; padding:11px 12px; border:1px solid #CBD8D6; border-radius:9px; font-size:15px; }
+  table{ border-collapse:collapse; width:100%; font-size:13px; }
+  th,td{ border:1px solid #E2ECEA; padding:8px 10px; text-align:left; vertical-align:top; }
+  th{ background:#EAF4F2; color:var(--teal); position:sticky; top:0; }
+  a.flink{ color:var(--sea); text-decoration:none; }
+  .bar{ display:flex; align-items:center; gap:8px; margin:6px 0; font-size:13px; }
+  .bar .lab{ width:200px; flex:none; color:var(--mute); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bar .track{ flex:1; background:#EAF4F2; border-radius:6px; height:18px; overflow:hidden; }
+  .bar .fill{ height:100%; background:linear-gradient(90deg,var(--sea),var(--mint)); }
+  .bar .num{ width:36px; text-align:right; color:var(--ink); }
+  .sec-title{ font-weight:700; color:var(--teal); margin:18px 0 8px; font-size:15px; border-left:4px solid var(--mint); padding-left:10px; }
+  .task-stat{ background:#FBFEFD; border:1px solid #D8ECE8; border-radius:10px; padding:10px 14px; margin:10px 0; }
+  .task-stat .tt{ font-weight:700; color:var(--teal); font-size:14px; margin-bottom:4px; }
+  .reason{ font-size:12px; color:var(--warn); margin:2px 0 0 8px; }
+  .hidden{ display:none; }
+  .err{ color:#B23A1E; font-size:13px; margin-top:8px; }
+  .ok-badge{ color:#02735E; font-weight:700; }
+  .no-badge{ color:var(--warn); font-weight:700; }
+  .del-btn{ background:var(--warn); color:#fff; border:none; border-radius:7px; padding:5px 9px; font-size:12px; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>数据回收 · 汇总端</h1>
+    <div>
+      <button class="btn" onclick="dl('api/files/zip')">批量下载文档(zip)</button>
+      <button class="btn primary" onclick="dl('api/export/excel')">导出 Excel</button>
+      <button class="btn danger" onclick="clearAll()">清空全部测试数据</button>
+      <button class="btn" onclick="logout()">退出</button>
+    </div>
+  </header>
+
+  <div class="card" id="statsCard">
+    <div class="sec-title">实操任务达成情况</div>
+    <div id="taskStats"></div>
+    <div class="sec-title">调查问卷统计</div>
+    <div id="stats"></div>
+  </div>
+
+  <div class="card">
+    <div class="sec-title">全部提交数据</div>
+    <div style="overflow:auto"><table id="tbl"></table></div>
+  </div>
+</div>
+
+<div class="login hidden" id="loginBox">
+  <h2 style="margin-top:0;color:var(--teal)">汇总端登录</h2>
+  <p style="color:var(--mute);font-size:13px">请输入查看密码</p>
+  <input type="password" id="pwd" placeholder="密码" />
+  <div class="err hidden" id="loginErr">密码错误</div>
+  <button class="btn primary" style="width:100%;margin-top:14px" onclick="doLogin()">登录</button>
+</div>
+
+<script>
+let CFG=null;
+function dl(path){ window.location.href = '/'+path; }
+function logout(){ document.cookie='sess=; Max-Age=0; path=/'; location.reload(); }
+
+async function doLogin(){
+  const pwd=document.getElementById('pwd').value;
+  const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pwd})});
+  if(r.ok){ location.reload(); } else { document.getElementById('loginErr').classList.remove('hidden'); }
+}
+
+async function init(){
+  CFG = await (await fetch('/api/config')).json();
+  let s;
+  try{ s=await (await fetch('/api/summary')).json(); }catch(e){ s=null; }
+  if(!s || s.error==='unauthorized'){ document.querySelector('.wrap').classList.add('hidden'); document.getElementById('loginBox').classList.remove('hidden'); return; }
+  const st = await (await fetch('/api/stats')).json();
+  renderTaskStats(st.tasks);
+  renderStats(st);
+  renderTable(s);
+}
+
+function renderTaskStats(tasks){
+  const box=document.getElementById('taskStats'); box.innerHTML='';
+  if(!tasks || !tasks.length){ box.innerHTML='<div class="hint">暂无实操反馈数据</div>'; return; }
+  tasks.forEach(t=>{
+    const card=document.createElement('div'); card.className='task-stat';
+    const total=t.yes+t.no;
+    const yesPct = total? Math.round(t.yes/total*100):0;
+    const noPct = total? Math.round(t.no/total*100):0;
+    let html=`<div class="tt">${t.title}</div>`;
+    html+=`<div class="bar"><div class="lab">能完成</div><div class="track"><div class="fill" style="width:${yesPct}%"></div></div><div class="num">${t.yes}</div></div>`;
+    html+=`<div class="bar"><div class="lab">未能完成</div><div class="track"><div class="fill" style="width:${noPct}%;background:linear-gradient(90deg,#E08A6E,#E0563B)"></div></div><div class="num">${t.no}</div></div>`;
+    card.innerHTML=html;
+    box.appendChild(card);
+    t.noReasons.forEach(rs=>{ const p=document.createElement('div'); p.className='reason'; p.textContent='· '+rs; box.appendChild(p); });
+  });
+}
+
+function renderStats(st){
+  const box=document.getElementById('stats'); box.innerHTML='';
+  const draw=(q)=>{
+    const max=Math.max(1,...q.options.map(o=>o.count));
+    q.options.forEach(o=>{
+      const row=document.createElement('div'); row.className='bar';
+      row.innerHTML=`<div class="lab" title="${o.opt}">${o.opt}</div><div class="track"><div class="fill" style="width:${o.count/max*100}%"></div></div><div class="num">${o.count}</div>`;
+      box.appendChild(row);
+    });
+  };
+  [...st.single, ...st.multi].forEach(q=>{
+    const t=document.createElement('div'); t.className='sec-title'; t.textContent=q.question; t.style.marginTop='10px'; box.appendChild(t);
+    draw(q);
+  });
+  st.text.forEach(q=>{
+    const t=document.createElement('div'); t.className='sec-title'; t.textContent=q.question; t.style.marginTop='10px'; box.appendChild(t);
+    q.answers.forEach(a=>{ const p=document.createElement('div'); p.style.fontSize='13px'; p.style.color='var(--mute)'; p.style.margin='3px 0'; p.textContent='· '+a; box.appendChild(p); });
+  });
+  if(!st.single.length && !st.multi.length && !st.text.length) box.innerHTML='<div class="hint">暂无问卷数据</div>';
+}
+
+function renderTable(rows){
+  const tbl=document.getElementById('tbl');
+  const head=document.createElement('tr');
+  const headCols=['#','提交时间',...CFG.basicInfoFields.map(f=>f.label)];
+  CFG.tasks.forEach(t=>{ if(!t.pending){ headCols.push(t.title+'·能否完成'); headCols.push(t.title+'·原因'); } });
+  headCols.push(...CFG.questionnaire.map(q=>q.question));
+  headCols.push('文档'); headCols.push('操作');
+  headCols.forEach(h=>{ const th=document.createElement('th'); th.textContent=h; head.appendChild(th); });
+  tbl.appendChild(head);
+  rows.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    const cells=[String(i+1), (r.created_at||'').replace('T',' ').slice(0,19)];
+    CFG.basicInfoFields.forEach(f=>cells.push((r.basic_info&&r.basic_info[f.key])??''));
+    CFG.tasks.forEach(t=>{
+      if(t.pending) return;
+      const fb = r.tasks ? r.tasks[t.id] : undefined;
+      if(fb && fb.achieved==='yes') cells.push('<span class="ok-badge">能完成</span>');
+      else if(fb && fb.achieved==='no') cells.push('<span class="no-badge">未能完成</span>');
+      else cells.push('—');
+      cells.push(fb && fb.reason ? fb.reason : '');
+    });
+    CFG.questionnaire.forEach(q=>{ const a=r.questionnaire?r.questionnaire[q.id]:undefined; cells.push(Array.isArray(a)?a.join('、'):(a??'')); });
+    const files=(r.files||[]).map(f=>`<a class="flink" href="/api/file?stored=${encodeURIComponent(f.stored)}&name=${encodeURIComponent(f.name)}">${f.name}</a>`).join('<br>')||'—';
+    cells.push(files);
+    cells.push(`<button class="del-btn" onclick="delRow('${r.id}')">删除</button>`);
+    cells.forEach(c=>{ const td=document.createElement('td'); td.innerHTML=c; tr.appendChild(td); });
+    tbl.appendChild(tr);
+  });
+}
+
+async function delRow(id){
+  if(!confirm('确定删除这条提交记录及其附件吗？')) return;
+  const r=await fetch('/api/delete?id='+encodeURIComponent(id),{method:'DELETE'});
+  const j=await r.json();
+  if(j.ok){ location.reload(); } else alert('删除失败：'+(j.error||''));
+}
+async function clearAll(){
+  if(!confirm('确定清空全部提交记录与附件吗？此操作不可恢复！')) return;
+  const r=await fetch('/api/delete/all',{method:'DELETE'});
+  const j=await r.json();
+  if(j.ok){ location.reload(); } else alert('清空失败：'+(j.error||''));
+}
+init();
+</script>
+</body>
+</html>

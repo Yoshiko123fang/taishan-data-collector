@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: taishan-data-collector
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /
+    envVars:
+      - key: MODE
+        value: supabase
+      - key: PASSWORD
+        value: rgzn2026
+      - key: PORT
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
