@@ -377,4 +377,4 @@ app.delete('/api/delete/all', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.listen(PORT, () => console.log(`数据回收网页端已启动  MODE=${MODE}  PORT=${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`数据回收网页端已启动  MODE=${MODE}  PORT=${PORT}`));
