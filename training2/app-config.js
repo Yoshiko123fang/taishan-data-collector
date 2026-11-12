@@ -3,19 +3,16 @@
 //  —— 把下面三项改成你自己的；业务字段按需改下面的数组即可 ——
 // ============================================================
 
-// 你的 Supabase 项目地址（与后端表/存储桶同一项目）
-const SUPABASE_URL = 'https://ddhhmoxcvqocraevcnqs.supabase.co';
-
-// 前端/匿名密钥（publishable / anon，可公开，用于浏览器直连）
-// 说明：静态版由浏览器直连 Supabase，因此只能用 anon 密钥；
+// 腾讯云开发 CloudBase 环境 ID（在 CloudBase 控制台 → 环境 → 概览 查看，形如 xxxx-env-id）
+// 说明：静态版由浏览器直连 CloudBase，因此只需 env ID（可公开）；
 //       汇总端密码仅在前端做“门槛”校验，非绝对安全（详见 README）。
-const SUPABASE_ANON = 'sb_publishable_1kzNnIFb1WOdcbmao8wuhw_IdPfNQqp';
+const CLOUDBASE_ENV = 'longmen-data-d5groxdtp14401c82'; // ← 改成你的 CloudBase 环境 ID
 
 // 汇总端查看密码
 const SUMMARY_PW = 'rgzn2026';
 
-// 数据表名（每场培训用独立表，避免汇总端把不同场次数据混在一起）
-// 改这场培训时：把这里和 supabase-setup-v2.sql 里的表名一起改成同一个名字即可
+// 数据集合名（每场培训用独立集合，避免汇总端把不同场次数据混在一起）
+// 改这场培训时：把这里改成新集合名，并在 CloudBase 控制台新建同名集合即可
 const TABLE = 'submissions_v2';
 
 // 1) 基本资料：全部必填、无格式校验

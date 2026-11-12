@@ -37,6 +37,7 @@
   .del-btn{ background:var(--warn); color:#fff; border:none; border-radius:7px; padding:5px 9px; font-size:12px; cursor:pointer; }
   .hint{ font-size:12px; color:var(--mute); }
 </style>
+<script src="vendor/cloudbase.full.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
 <script src="vendor/jszip.min.js"></script>
 <script src="app-config.js"></script>
@@ -74,10 +75,19 @@
 </div>
 
 <script>
-const SB = SUPABASE_URL, ANON = SUPABASE_ANON;
+const ENV = CLOUDBASE_ENV;
 const CFG = { basicInfoFields, tasks, questionnaire, taskDoc };
-let ROWS = [];
-function sbHeaders(extra){ return Object.assign({'apikey':ANON,'Authorization':'Bearer '+ANON}, extra||{}); }
+let ROWS = [], FILE_URLS = {}, db, storage, cbReady=false;
+function fmtTime(t){ if(!t) return ''; try{ return new Date(t).toISOString().replace('T',' ').slice(0,19); }catch(e){ return String(t); } }
+
+async function initCB(){
+  if(cbReady) return;
+  const app = cloudbase.init({ env: ENV });
+  try{ await app.auth().signInAnonymously(); }catch(e){}
+  db = app.database();
+  try{ storage = app.storage(); }catch(e){ storage = null; }
+  cbReady = true;
+}
 
 function doLogin(){
   const pwd = document.getElementById('pwd').value;
@@ -94,9 +104,30 @@ if(localStorage.getItem('summary_ok') === '1'){
 }
 
 async function loadData(){
-  const r = await fetch(`${SB}/rest/v1/${TABLE}?select=*&order=created_at.asc`, { headers: sbHeaders() });
-  if(!r.ok){ alert('加载失败：'+r.status); return; }
-  ROWS = await r.json();
+  try{ await initCB(); }
+  catch(e){ alert('初始化失败（请确认 CloudBase 环境ID/匿名登录/Web安全域名已配置）：'+e.message); return; }
+  // 分批拉取，避免 CloudBase 单次查询默认上限导致数据不全
+  ROWS = [];
+  let skip = 0;
+  while(true){
+    const res = await db.collection(TABLE).limit(100).skip(skip).get();
+    const batch = res.data || [];
+    ROWS = ROWS.concat(batch);
+    if(batch.length < 100) break;
+    skip += 100;
+  }
+  const ids = [];
+  ROWS.forEach(r=>(r.files||[]).forEach(f=>{ if(f.fileID) ids.push(f.fileID); }));
+  FILE_URLS = {};
+  if(storage){
+    for(let i=0;i<ids.length;i+=50){
+      const slice = ids.slice(i,i+50);
+      try{
+        const r2 = await storage.getTempFileURL({ fileList: slice });
+        (r2.fileList||[]).forEach(x=>{ if(x.tempFileURL) FILE_URLS[x.fileID]=x.tempFileURL; });
+      }catch(e){}
+    }
+  }
   renderTaskStats(); renderStats(); renderTable();
 }
 
@@ -139,7 +170,10 @@ function renderStats(){
 function fileLinks(r){
   const files=(r.files||[]);
   if(!files.length) return '—';
-  return files.map(f=>`<a class="flink" href="${SB}/storage/v1/object/uploads/${encodeURIComponent(f.stored)}?download=${encodeURIComponent(f.name)}" target="_blank">${f.name}</a>`).join('<br>');
+  return files.map(f=>{
+    const url = f.fileID && FILE_URLS[f.fileID] ? FILE_URLS[f.fileID] : '';
+    return url ? `<a class="flink" href="${url}" target="_blank" download="${encodeURIComponent(f.name)}">${f.name}</a>` : (f.name||'附件');
+  }).join('<br>');
 }
 function renderTable(){
   const tbl=document.getElementById('tbl'); tbl.innerHTML='';
@@ -152,7 +186,7 @@ function renderTable(){
   tbl.appendChild(head);
   ROWS.forEach((r,i)=>{
     const tr=document.createElement('tr');
-    const cells=[String(i+1), (r.created_at||'').replace('T',' ').slice(0,19)];
+    const cells=[String(i+1), fmtTime(r.createdAt)];
     CFG.basicInfoFields.forEach(f=>cells.push((r.basic_info&&r.basic_info[f.key])??''));
     CFG.tasks.forEach(t=>{ if(t.pending) return; const fb=r.tasks?r.tasks[t.id]:undefined;
       if(fb&&fb.achieved==='yes') cells.push('<span class="ok-badge">能完成</span>');
@@ -161,7 +195,7 @@ function renderTable(){
       cells.push(fb&&fb.reason?fb.reason:''); });
     CFG.questionnaire.forEach(q=>{ const a=r.questionnaire?r.questionnaire[q.id]:undefined; cells.push(Array.isArray(a)?a.join('、'):(a??'')); });
     cells.push(fileLinks(r));
-    cells.push(`<button class="del-btn" onclick="delRow('${r.id}')">删除</button>`);
+    cells.push(`<button class="del-btn" onclick="delRow('${r._id}')">删除</button>`);
     cells.forEach(c=>{ const td=document.createElement('td'); td.innerHTML=c; tr.appendChild(td); });
     tbl.appendChild(tr);
   });
@@ -169,20 +203,22 @@ function renderTable(){
 
 async function delRow(id){
   if(!confirm('确定删除这条提交记录及其附件吗？')) return;
-  const row = ROWS.find(x=>x.id===id);
-  for(const f of (row.files||[])){
-    await fetch(`${SB}/storage/v1/object/uploads/${encodeURIComponent(f.stored)}`, {method:'DELETE', headers:sbHeaders()}).catch(()=>{});
+  const row = ROWS.find(x=>x._id===id);
+  if(row && row.files && row.files.length){
+    const ids = row.files.filter(f=>f.fileID).map(f=>f.fileID);
+    if(ids.length) await storage.deleteFile({ fileList: ids }).catch(()=>{});
   }
-  const r=await fetch(`${SB}/rest/v1/${TABLE}?id=eq.${id}`, {method:'DELETE', headers:sbHeaders()});
-  if(r.ok) loadData(); else alert('删除失败');
+  await db.collection(TABLE).doc(id).remove();
+  loadData();
 }
 async function clearAll(){
   if(!confirm('确定清空全部提交记录与附件吗？此操作不可恢复！')) return;
   for(const r of ROWS){
-    for(const f of (r.files||[])){
-      await fetch(`${SB}/storage/v1/object/uploads/${encodeURIComponent(f.stored)}`, {method:'DELETE', headers:sbHeaders()}).catch(()=>{});
-    }
-    await fetch(`${SB}/rest/v1/${TABLE}?id=eq.${r.id}`, {method:'DELETE', headers:sbHeaders()}).catch(()=>{});
+    const ids = (r.files||[]).filter(f=>f.fileID).map(f=>f.fileID);
+    if(ids.length) await storage.deleteFile({ fileList: ids }).catch(()=>{});
+  }
+  for(const r of ROWS){
+    await db.collection(TABLE).doc(r._id).remove().catch(()=>{});
   }
   loadData();
 }
@@ -192,11 +228,15 @@ async function dlZip(){
   const zip=new JSZip(); let n=0; const used=new Set();
   for(const r of ROWS){
     for(const f of (r.files||[])){
+      const url = FILE_URLS[f.fileID];
+      if(!url) continue;
       let base=`${n+1}_${f.name}`;
       while(used.has(base)){ base=`${n+1}_${Math.random().toString(36).slice(2,6)}_${f.name}`; }
       used.add(base);
-      const blob=await (await fetch(`${SB}/storage/v1/object/uploads/${encodeURIComponent(f.stored)}`, {headers:sbHeaders()})).blob();
-      zip.file(base, blob); n++;
+      try{
+        const blob=await (await fetch(url)).blob();
+        zip.file(base, blob); n++;
+      }catch(e){}
     }
   }
   if(n===0){ alert('没有可下载的文档'); return; }
@@ -209,7 +249,7 @@ function dlExcel(){
   CFG.tasks.forEach(t=>{ if(!t.pending){ aoa[0].push(t.title+'·能否完成'); aoa[0].push(t.title+'·原因'); } });
   aoa[0].push(...CFG.questionnaire.map(q=>q.question)); aoa[0].push('文档');
   ROWS.forEach((r,i)=>{
-    const row=[i+1,(r.created_at||'').replace('T',' ').slice(0,19)];
+    const row=[i+1,fmtTime(r.createdAt)];
     CFG.basicInfoFields.forEach(f=>row.push((r.basic_info&&r.basic_info[f.key])??''));
     CFG.tasks.forEach(t=>{ if(t.pending) return; const fb=r.tasks?r.tasks[t.id]:undefined;
       row.push(fb&&fb.achieved==='yes'?'能完成':(fb&&fb.achieved==='no'?'未能完成':''));

@@ -83,16 +83,27 @@
   <div class="msg" id="msg"></div>
 </div>
 
+<script src="vendor/cloudbase.full.js"></script>
 <script src="app-config.js"></script>
 <script>
-const SB = SUPABASE_URL, ANON = SUPABASE_ANON;
+const ENV = CLOUDBASE_ENV;
 const CFG = { basicInfoFields, tasks, questionnaire, taskDoc };
 let submitted = false;
+let cbReady = false, db, storage;
 
 function el(tag, attrs={}, html){ const e=document.createElement(tag); for(const k in attrs) e[k]=attrs[k]; if(html!=null) e.innerHTML=html; return e; }
 function safeName(n){ return (n||'file').replace(/[^\w.\-]/g,'_').slice(0,120); }
 function randHex(){ const a=new Uint8Array(3); crypto.getRandomValues(a); return [...a].map(x=>x.toString(16).padStart(2,'0')).join(''); }
-function sbHeaders(extra){ return Object.assign({'apikey':ANON,'Authorization':'Bearer '+ANON}, extra||{}); }
+async function initCB(){
+  if(cbReady) return;
+  const app = cloudbase.init({ env: ENV });
+  // 匿名登录：失败不阻断（集合权限设为“所有用户可读写”时通常仍可写入）
+  try{ await app.auth().signInAnonymously(); }catch(e){}
+  db = app.database();
+  try{ storage = app.storage(); }catch(e){ storage = null; }
+  cbReady = true;
+}
+function showMsg(text, ok){ const m=document.getElementById('msg'); m.textContent=text; m.className='msg '+(ok?'ok':'err'); m.style.display='block'; m.scrollIntoView({behavior:'smooth',block:'center'}); }
 
 function renderBasic(){
   const bi = document.getElementById('basicInfo');
@@ -204,7 +215,6 @@ function collect(){
   });
   return { basic_info, tasks, questionnaire, missing };
 }
-function showMsg(text, ok){ const m=document.getElementById('msg'); m.textContent=text; m.className='msg '+(ok?'ok':'err'); m.style.display='block'; m.scrollIntoView({behavior:'smooth',block:'center'}); }
 
 document.getElementById('files').accept = CFG.taskDoc.accept;
 document.getElementById('fileHint').textContent = `支持 ${CFG.taskDoc.accept} ，最多 ${CFG.taskDoc.maxFiles} 个，单个 ${CFG.taskDoc.maxSizeMB}MB`;
@@ -220,27 +230,23 @@ document.getElementById('submitBtn').addEventListener('click', async ()=>{
     if(!fb.achieved){ showMsg('请完成反馈：'+t.title, false); return; }
     if(fb.achieved==='no' && !fb.reason){ showMsg('请填写未能完成的原因：'+t.title, false); return; }
   }
+  try{ await initCB(); }
+  catch(e){ showMsg('初始化失败（请确认 CloudBase 环境ID/匿名登录/Web安全域名已配置）：'+e.message, false); return; }
   const id = crypto.randomUUID();
   const files=[]; const fileList = document.getElementById('files').files;
   for(const f of fileList){
-    const path = `${id}__${randHex()}__${safeName(f.name)}`;
-    try{
-      const r = await fetch(`${SB}/storage/v1/object/uploads/${path}`, {
-        method:'POST',
-        headers: sbHeaders({'Content-Type':'application/octet-stream','x-upsert':'true'}),
-        body: f
-      });
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      files.push({ name: f.name, stored: path });
-    }catch(e){ showMsg('文件“'+f.name+'”上传失败：'+e.message, false); return; }
+    const path = `uploads/${id}__${randHex()}__${safeName(f.name)}`;
+    if(storage){
+      try{
+        const r = await storage.uploadFile({ cloudPath: path, filePath: f });
+        files.push({ name: f.name, fileID: r.fileID });
+        continue;
+      }catch(e){ /* 上传失败仅记录文件名，不影响主数据 */ }
+    }
+    files.push({ name: f.name, fileID: null });
   }
   try{
-    const r = await fetch(`${SB}/rest/v1/${TABLE}`, {
-      method:'POST',
-      headers: sbHeaders({'Content-Type':'application/json','Prefer':'return=minimal'}),
-      body: JSON.stringify({ id, basic_info, tasks, questionnaire, files })
-    });
-    if(!r.ok) throw new Error('HTTP '+r.status);
+    await db.collection(TABLE).add({ id, basic_info, tasks, questionnaire, files, createdAt: new Date() });
     submitted = true;
     document.getElementById('submitBtn').disabled = true;
     showMsg('提交成功，感谢您的参与！', true);
